@@ -2,6 +2,7 @@
 from __future__ import absolute_import
 
 import logging
+import json
 
 from multiprocessing import Process
 
@@ -12,12 +13,13 @@ from autobahn.twisted.websocket import WebSocketClientProtocol, WebSocketClientF
 
 
 # Constants
-# TODO: don't hardcode this
-# OSKR_WEBSOCKET_URL = 'ws://127.0.0.1:5443'
-OSKR_WEBSOCKET_URL = 'ws://52.229.122.32:5443'
 MODULE_NAME = 'octoprint.plugins.lani.listener'
 
+# Globals
+uuid = ''
+
 logger = logging.getLogger(MODULE_NAME)
+# TODO: use this ^
 
 
 class WebSocketProtocol(WebSocketClientProtocol):
@@ -26,7 +28,12 @@ class WebSocketProtocol(WebSocketClientProtocol):
         print(response.peer)
 
     def onOpen(self):
+        global uuid
+        print(uuid)
         print('OPEN')
+        self.sendMessage(json.dumps({
+            'uuid': uuid
+        }).encode('utf-8'))
 
     def onMessage(self, payload, isBinary):
         if isBinary:
@@ -51,7 +58,7 @@ class WebSocketFactory(ReconnectingClientFactory, WebSocketClientFactory):
     jitter = 0
 
     def startedConnecting(self, connector):
-        print('Connecting to {}'.format(OSKR_WEBSOCKET_URL))
+        print('Connecting to oskr at {}'.format(self.url))
 
     def clientConnectionLost(self, connector, reason):
         print('Lost connection. Reason: {}'.format(reason))
@@ -63,12 +70,19 @@ class WebSocketFactory(ReconnectingClientFactory, WebSocketClientFactory):
 
 
 class LaniListener(Process):
+    def __init__(self, id, oskr_url):
+        super(self.__class__, self).__init__()
+        global uuid
+        uuid = id
+        self.oskr_url = oskr_url
+
     def run(self):
+        print(self.oskr_url)
         logger.info('Listener thread created.')
         twistedLogger = log.PythonLoggingObserver(loggerName=MODULE_NAME + '.twisted')
         twistedLogger.start()
 
-        factory = WebSocketFactory(OSKR_WEBSOCKET_URL)
+        factory = WebSocketFactory(self.oskr_url)
         factory.protocol = WebSocketProtocol
 
         connectWS(factory)
