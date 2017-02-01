@@ -22,12 +22,15 @@ Vagrant.configure(2) do |config|
       echo 'Setting hostname...'
       hostnamectl set-hostname ${HOSTNAME}
 
+      echo 'Allowing access to USB for vagrant user...'
+      sudo usermod -a -G dialout vagrant
+
       echo 'Updating packages...'
       apt-get update
       apt-get upgrade -y
 
       echo 'Installing dependencies...'
-      apt-get install -y curl git vim python-dev build-essential
+      apt-get install -y curl git vim python-dev build-essential cura-engine
       curl https://bootstrap.pypa.io/get-pip.py | sudo python -
       pip install virtualenv
 
