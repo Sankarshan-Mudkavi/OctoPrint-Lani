@@ -122,8 +122,6 @@ class LaniPlugin(octoprint.plugin.StartupPlugin,
 
     def on_after_startup(self):
         self._logger.info('Initializing.')
-        global last_state
-        last_state = self._printer.get_state_id()
 
         self._logger.info('Registering callback for printer events.')
         self._printer.register_callback(PrinterCallback(
