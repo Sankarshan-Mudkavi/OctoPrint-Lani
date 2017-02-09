@@ -5,7 +5,7 @@ window.addEventListener('load', function() {
   const laniReload = document.getElementById('lani-check');
   const laniLink = document.getElementById('lani-link');
   const laniInfo = document.getElementById('lani-info');
-  const laniPrintCenterName = document.getElementById('lani-pc-name');
+  const laniPrintCenterLink = document.getElementById('lani-pc-link');
 
   function checkStatus() {
     laniReload.disabled = true;
@@ -22,7 +22,8 @@ window.addEventListener('load', function() {
           laniReload.style.display = 'none';
           laniLink.style.display = 'none';
 
-          laniPrintCenterName.textContent = data.printCenter.name;
+          laniPrintCenterLink.textContent = data.printCenter.name;
+          laniPrintCenterLink.setAttribute('href', `https://lanilabs.com/${data.printCenter.subdomain}`)
           laniInfo.style.display = 'inline';
         },
         404: function() {
