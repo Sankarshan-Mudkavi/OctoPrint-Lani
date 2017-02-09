@@ -4,90 +4,72 @@ from __future__ import absolute_import
 import uuid
 import os
 import json
-import urllib2
+import requests
 
 import octoprint.plugin
+import octoprint.printer
 
 from octoprint_lani.listener import LaniListener
+
+
+class PrinterCallback(octoprint.printer.PrinterCallback):
+    def __init__(self, logger, uuid, update_url):
+        super(self.__class__, self).__init__()
+        self._logger = logger
+        self._uuid = uuid
+        self._update_url = update_url
+        self.last_state = ''
+
+    def on_printer_send_current_data(self, data):
+        state = json.dumps({
+            self._uuid: data
+        })
+        if state != self.last_state:
+            self.last_state = state
+            requests.post(self._update_url, data=state)
+
+    # def on_printer_add_temperature(self, data):
+    #     pass
 
 
 class LaniPlugin(octoprint.plugin.StartupPlugin,
                  octoprint.plugin.SettingsPlugin,
                  octoprint.plugin.TemplatePlugin,
                  octoprint.plugin.AssetPlugin,
-                 octoprint.plugin.EventHandlerPlugin):
+                 octoprint.plugin.EventHandlerPlugin,
+                 octoprint.plugin.ProgressPlugin):
 
-    def message_handler(self, payload):
-        try:
-            message = json.loads(payload)
-            if message["type"] == "PRINT_STL":
-                print(self._printer.get_state_id())
-                # TODO: check for enabled printer
-                model_file_location = "{}/model.stl".format(self.get_plugin_data_folder())
-                print('Downloading file')
-                res = urllib2.urlopen(message["url"])
-                with open(model_file_location, 'w') as file:
-                    file.write(res.read())
-                print('slicing file')
-                default_slicer = self._slicing_manager.default_slicer
-                print(default_slicer)
-                # print(self._slicing_manager.all_profiles(default_slicer, require_configured=True))
-                print(self._slicing_manager.all_profiles(default_slicer))
+    # def __send_state_update(self, progress=None):
+    #     global last_state
+    #     current_state = self._printer.get_state_id()
+    #     uuid = self._settings.get(['id'])
 
-                slicer_profile = None
-                for profile in self._slicing_manager.all_profiles(default_slicer).itervalues():
-                    if profile.default:
-                        slicer_profile = profile.name
-                        break
-                if slicer_profile is None:
-                    slicer_profile = self._slicing_manager.all_profiles(default_slicer).keys()[0]
+    #     state = {
+    #         uuid: {
+    #             'state': current_state,
+    #             'temperatures': self._printer.get_current_temperatures(),
+    #             'job': self._printer.get_current_job(),
+    #         },
+    #     }
+    #     if progress is not None:
+    #         state[uuid]['progress'] = progress
+    #     elif last_state == current_state:
+    #         # No need to make another request
+    #         return
 
-                def callback(*args, **kwargs):
-                    # TODO: check _errors here
-                    if '_error' in kwargs:
-                        print(kwargs['_error'])
-                        return
-                    print('slicing compllete')
-                    print(args)
-                    print(kwargs)
-                    print(self._printer.is_ready())
-                    print(self._printer.get_state_id())
-                    if self._printer.is_ready():
-                        print("printing")
-                        self._printer.select_file(
-                            "{}/model.gcode".format(self.get_plugin_data_folder()),
-                            False,
-                            printAfterSelect=True,
-                        )
-                        print("started")
-
-                self._slicing_manager.slice(
-                    default_slicer,
-                    model_file_location,
-                    "{}/model.gcode".format(self.get_plugin_data_folder()),
-                    slicer_profile,
-                    callback,
-                )
-                # self._printer.printwhatever()
-            elif message["type"] == "STOP":
-                self._printer.stop()
-            print('handled')
-        # except (KeyError, ValueError, IOError, octoprint.slicing.exceptions.SlicerNotConfigured):
-        except (KeyError):
-            print("Invalid message")
+    #     last_state = current_state
+    #     self._logger.info('Sending state update: {}'.format(json.dumps(state)))
+    #     requests.post(self._settings.get(['oskr_update_url']), data=json.dumps(state))
 
     # EventHandler mixin
 
-    def on_event(self, event, payload):
-        print(json.dumps({
-            'state': self._printer.get_state_id(),
-        }))
+    # def on_event(self, event, payload):
+    #     self.__send_state_update()
 
-    def on_print_progress(self, storage, path, progress):
-        print(json.dumps({
-            'state': self._printer.get_state_id(),
-            'progress': progress,
-        }))
+    # Progress mixin
+
+    # def on_print_progress(self, storage, path, progress):
+    #     self.__send_state_update(progress=progress)
 
     # Softwareupdate hook
 
@@ -128,32 +110,40 @@ class LaniPlugin(octoprint.plugin.StartupPlugin,
 
         return dict(
             id=id,
-            instance_endpoint='https://api.laniservices.com/octoprint_instances/',
+            # instance_endpoint='http://localhost:3000/octoprint_instances/',
+            instance_endpoint='https://lani-api.herokuapp.com/octoprint_instances/',
+            # registration_link='http://localhost:8000/add_octoprint/',
             registration_link='https://lanilabs.com/add_octoprint/',
-            oskr_url='ws://oskr.laniservices.com:8080/octoprint/client'
+            oskr_ws_url='ws://oskr.laniservices.com:8080/octoprint/client?uuid={}'.format(id),
+            oskr_update_url='https://oskr.laniservices.com/octoprint/update?uuid={}'.format(id),
         )
 
     # StartupPlugin mixin
 
     def on_after_startup(self):
+        self._logger.info('Initializing.')
+        global last_state
+        last_state = self._printer.get_state_id()
+
+        self._logger.info('Registering callback for printer events.')
+        self._printer.register_callback(PrinterCallback(
+            self._logger,
+            self._settings.get(['id']),
+            self._settings.get(['oskr_update_url']),
+        ))
+
+        self._logger.info('Sending initial state data.')
+        requests.post(self._settings.get(['oskr_update_url']), data=json.dumps({
+            self._settings.get(['id']): self._printer.get_current_data()
+        }))
+
         self._logger.info('Starting Lani Listener.')
         listener = LaniListener(
-            self._settings.get(['id']),
-            self._settings.get(["oskr_url"]),
+            self._logger,
+            self._settings.get(['oskr_ws_url']),
             self.get_plugin_data_folder(),
         )
         listener.start()
-
-        # twistedLogger = log.PythonLoggingObserver(loggerName='octoprint.plugins.lani.listener.twisted')
-        # twistedLogger.start()
-
-        # factory = WebSocketFactory('ws://oskr.laniservices.com:8080/octoprint/client' + '?uuid=' + self._settings.get(['id']))
-        # factory.protocol = WebSocketProtocol
-
-        # connectWS(factory)
-        # # reactor.run(installSignalHandlers=False)
-        # Process(target=reactor.run).start()
-        print('test')
 
     # TemplatePlugin
 

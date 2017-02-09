@@ -1,10 +1,11 @@
 # coding=utf-8
 from __future__ import absolute_import
 
-import logging
 import json
 import urllib2
 import requests
+import os
+import yaml
 
 from multiprocessing import Process
 
@@ -20,38 +21,24 @@ MODULE_NAME = 'octoprint.plugins.lani.listener'
 # Globals
 messageHandler = None
 
-logger = logging.getLogger(MODULE_NAME)
-# TODO: use this ^
-
-
 class WebSocketProtocol(WebSocketClientProtocol):
     def onConnect(self, response):
-        print('CONNECT')
-        print(response.peer)
+        # print(response.peer)
+        pass
 
     def onOpen(self):
-        # global uuid
-        # print(uuid)
-        print('OPEN')
-        # self.sendMessage(json.dumps({
-        #     'uuid': uuid
-        # }).encode('utf-8'))
+        pass
 
     def onMessage(self, payload, isBinary):
-        code, text = messageHandler(payload)
+        code, text = messageHandler(payload, isBinary)
         self.sendMessage(json.dumps({
             'code': code,
             'text': text,
         }).encode('utf-8'))
-        # TODO: send back message id,
-        # if isBinary:
-        #     print("Binary message received: {0} bytes".format(len(payload)))
-        # else:
-        #     print("Text message received: {0}".format(payload.decode('utf8')))
 
     def onClose(self, wasClean, code, reason):
         print('CLOSED---------')
-        print("WebSocket connection closed: {0}".format(reason))
+        print('WebSocket connection closed: {0}'.format(reason))
 
     def onError(self):
         print('ERROR')
@@ -78,13 +65,20 @@ class WebSocketFactory(ReconnectingClientFactory, WebSocketClientFactory):
 
 
 class LaniListener(Process):
-    def __init__(self, id, oskr_url, data_folder):
+    def __init__(self, logger, ws_url, data_folder):
         super(self.__class__, self).__init__()
+
+        self.logger = logger
+
         global messageHandler
         messageHandler = self.__messageHandler
-        self.oskr_url = oskr_url + '?uuid=' + id
+
+        self.ws_url = ws_url
         self.data_folder = data_folder
-        self.octoprint_api_key = '3379659B413148449175F11FD806B68C'
+
+        with open(os.path.join(data_folder, '../../config.yaml'), 'r') as config_file:
+            self.octoprint_api_key = yaml.load(config_file)['api']['key']
+
         self.octoprint_base_url = 'http://localhost:5000'
 
     # def __upload_file_to_octoprint(self, location)
@@ -93,20 +87,24 @@ class LaniListener(Process):
             'X-Api-Key': self.octoprint_api_key
         }
 
-    def __messageHandler(self, payload):
+    def __messageHandler(self, payload, isBinary):
+        if (isBinary):
+            self.logger.info('Binary command received. Ignoring.')
+            return
+
         try:
+            self.logger.info('Command received: {}'.format(payload))
             message = json.loads(payload)
-            print(message)
 
-            if message["type"] == "PRINT_STL":
-                model_file_location = "{}/model.stl".format(self.data_folder)
+            if message['type'] == 'PRINT_STL':
+                model_file_location = '{}/model.stl'.format(self.data_folder)
 
-                print('Downloading file')
-                res = urllib2.urlopen(message["url"])
+                self.logger.info('Downloading file.')
+                res = urllib2.urlopen(message['url'])
                 with open(model_file_location, 'w') as file:
                     file.write(res.read())
 
-                print('Uploading file')
+                self.logger.info('Uploading file.')
                 url = '%s/api/files/local' % self.octoprint_base_url
                 args = {
                     'headers': self.__get_headers(),
@@ -116,41 +114,37 @@ class LaniListener(Process):
                     }
                 }
                 r = requests.post(url, **args)
-                print('---------------------------')
-                print(r.url)
-                print(r.status_code)
-                print(r.headers['location'])
-                print(r.text)
+
+                self.logger.info('Upload response: {}'.format(r.status_code))
 
                 if r.status_code == 201:
-                    print('Printing')
+                    self.logger.info('Slicing and printing.')
                     url = r.headers['location']
-                    r = requests.post(url, headers={
-                        'X-Api-Key': self.octoprint_api_key,
-                    }, json={
+                    r = requests.post(url, headers=self.__get_headers(), json={
                         'command': 'slice',
                         'print': True,
                     })
-                    print(r.status_code)
-                    print(r.text)
+                    self.logger.info('Slice command response: {}'.format(r.status_code))
 
                 return r.status_code, r.text
 
-            elif message["type"] == "STOP":
-                self._printer.stop()
-            print('handled')
+            elif message['type'] == 'STOP':
+                url = '%s/api/job' % self.octoprint_base_url
+                r = requests.post(url, headers=self.__get_headers(), json={
+                    'command': 'cancel'
+                })
+                return r.status_code, r.text
         # except (KeyError, ValueError, IOError, octoprint.slicing.exceptions.SlicerNotConfigured):
-        except (KeyError):
-            print("Invalid message")
-            return 500, "Internal error"
+        except KeyError as e:
+            self.logger.info('KeyError')
+            return 500, 'Internal error: ' + e
 
     def run(self):
-        print(self.oskr_url)
-        logger.info('Listener thread created.')
+        self.logger.info('Listener started.')
         twistedLogger = log.PythonLoggingObserver(loggerName=MODULE_NAME + '.twisted')
         twistedLogger.start()
 
-        factory = WebSocketFactory(self.oskr_url)
+        factory = WebSocketFactory(self.ws_url)
         factory.protocol = WebSocketProtocol
 
         connectWS(factory)
