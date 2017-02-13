@@ -14,6 +14,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import ReconnectingClientFactory
 from autobahn.twisted.websocket import WebSocketClientProtocol, WebSocketClientFactory, connectWS
 
+from octoprint.slicing.exceptions import SlicerNotConfigured
 
 # Constants
 MODULE_NAME = 'octoprint.plugins.lani.listener'
@@ -134,10 +135,18 @@ class LaniListener(Process):
                     'command': 'cancel'
                 })
                 return r.status_code, r.text
-        # except (KeyError, ValueError, IOError, octoprint.slicing.exceptions.SlicerNotConfigured):
         except KeyError as e:
             self.logger.info('KeyError')
             return 500, 'Internal error: ' + e
+        except ValueError as e:
+            self.logger.info('ValueError')
+            return 500, 'Internal error: ' + e
+        except IOError as e:
+            self.logger.info('ValueError')
+            return 500, 'Internal error: ' + e
+        except SlicerNotConfigured as e:
+            self.logger.info('Error: slicer is not configured')
+            return 400, 'Slicer not configured'
 
     def run(self):
         self.logger.info('Listener started.')
