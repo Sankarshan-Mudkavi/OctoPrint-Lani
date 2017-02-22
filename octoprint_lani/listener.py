@@ -98,18 +98,18 @@ class LaniListener(Process):
             message = json.loads(payload)
 
             if message['type'] == 'PRINT_STL':
-                model_file_location = '{}/model.stl'.format(self.data_folder)
+                file_location = '{}/model.stl'.format(self.data_folder)
 
                 self.logger.info('Downloading file.')
                 res = urllib2.urlopen(message['url'])
-                with open(model_file_location, 'w') as file:
+                with open(file_location, 'w') as file:
                     file.write(res.read())
 
                 self.logger.info('Uploading file.')
                 url = '%s/api/files/local' % self.octoprint_base_url
                 args = {
                     'headers': self.__get_headers(),
-                    'files': {'file': open(model_file_location, 'rb')},
+                    'files': {'file': open(file_location, 'rb')},
                     'params': {
                         'path': 'lani',
                     }
@@ -126,6 +126,30 @@ class LaniListener(Process):
                         'print': True,
                     })
                     self.logger.info('Slice command response: {}'.format(r.status_code))
+
+                return r.status_code, r.text
+
+            elif message['type'] == 'PRINT_GCODE':
+                file_location = '{}/model.gcode'.format(self.data_folder)
+
+                self.logger.info('Downloading file.')
+                res = urllib2.urlopen(message['url'])
+                with open(file_location, 'w') as file:
+                    file.write(res.read())
+
+                self.logger.info('Uploading file.')
+                url = '%s/api/files/local' % self.octoprint_base_url
+                args = {
+                    'headers': self.__get_headers(),
+                    'files': {'file': open(file_location, 'rb')},
+                    'params': {
+                        'path': 'lani',
+                        'print': True,
+                    }
+                }
+                r = requests.post(url, **args)
+
+                self.logger.info('Upload response: {}'.format(r.status_code))
 
                 return r.status_code, r.text
 
