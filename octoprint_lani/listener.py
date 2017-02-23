@@ -14,6 +14,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import ReconnectingClientFactory
 from autobahn.twisted.websocket import WebSocketClientProtocol, WebSocketClientFactory, connectWS
 
+from octoprint.slicing.exceptions import SlicerNotConfigured
 
 # Constants
 MODULE_NAME = 'octoprint.plugins.lani.listener'
@@ -97,18 +98,18 @@ class LaniListener(Process):
             message = json.loads(payload)
 
             if message['type'] == 'PRINT_STL':
-                model_file_location = '{}/model.stl'.format(self.data_folder)
+                file_location = '{}/model.stl'.format(self.data_folder)
 
                 self.logger.info('Downloading file.')
                 res = urllib2.urlopen(message['url'])
-                with open(model_file_location, 'w') as file:
+                with open(file_location, 'w') as file:
                     file.write(res.read())
 
                 self.logger.info('Uploading file.')
                 url = '%s/api/files/local' % self.octoprint_base_url
                 args = {
                     'headers': self.__get_headers(),
-                    'files': {'file': open(model_file_location, 'rb')},
+                    'files': {'file': open(file_location, 'rb')},
                     'params': {
                         'path': 'lani',
                     }
@@ -128,16 +129,48 @@ class LaniListener(Process):
 
                 return r.status_code, r.text
 
+            elif message['type'] == 'PRINT_GCODE':
+                file_location = '{}/model.gcode'.format(self.data_folder)
+
+                self.logger.info('Downloading file.')
+                res = urllib2.urlopen(message['url'])
+                with open(file_location, 'w') as file:
+                    file.write(res.read())
+
+                self.logger.info('Uploading file.')
+                url = '%s/api/files/local' % self.octoprint_base_url
+                args = {
+                    'headers': self.__get_headers(),
+                    'files': {'file': open(file_location, 'rb')},
+                    'params': {
+                        'path': 'lani',
+                        'print': 'true',
+                    }
+                }
+                r = requests.post(url, **args)
+
+                self.logger.info('Upload response: {}'.format(r.status_code))
+
+                return r.status_code, r.text
+
             elif message['type'] == 'STOP':
                 url = '%s/api/job' % self.octoprint_base_url
                 r = requests.post(url, headers=self.__get_headers(), json={
                     'command': 'cancel'
                 })
                 return r.status_code, r.text
-        # except (KeyError, ValueError, IOError, octoprint.slicing.exceptions.SlicerNotConfigured):
         except KeyError as e:
             self.logger.info('KeyError')
             return 500, 'Internal error: ' + e
+        except ValueError as e:
+            self.logger.info('ValueError')
+            return 500, 'Internal error: ' + e
+        except IOError as e:
+            self.logger.info('ValueError')
+            return 500, 'Internal error: ' + e
+        except SlicerNotConfigured as e:
+            self.logger.info('Error: slicer is not configured')
+            return 400, 'Slicer not configured'
 
     def run(self):
         self.logger.info('Listener started.')
