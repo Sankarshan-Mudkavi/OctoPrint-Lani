@@ -144,7 +144,7 @@ class LaniListener(Process):
                     'files': {'file': open(file_location, 'rb')},
                     'params': {
                         'path': 'lani',
-                        'print': True,
+                        'print': 'true',
                     }
                 }
                 r = requests.post(url, **args)
