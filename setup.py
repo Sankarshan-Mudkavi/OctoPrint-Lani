@@ -33,7 +33,7 @@ plugin_url = "https://lanilabs.com"
 plugin_license = "None"
 
 # Any additional requirements besides OctoPrint should be listed here
-plugin_requires = ['autobahn', 'twisted', 'requests', 'pyyaml']
+plugin_requires = ['autobahn', 'twisted<17.0.0', 'requests', 'pyyaml']
 
 ### --------------------------------------------------------------------------------------------------------------------
 ### More advanced options that you usually shouldn't have to touch follow after this point
