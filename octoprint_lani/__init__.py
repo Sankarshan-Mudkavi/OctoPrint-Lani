@@ -28,8 +28,10 @@ class PrinterCallback(octoprint.printer.PrinterCallback):
             self.last_state = state
             try:
                 requests.post(self._update_url, data=state)
-            except:  # requests.ConnectionError:
+            except requests.ConnectionError:
                 pass
+            except:
+                self._logger.info('Ignoring request error.')
 
     # def on_printer_add_temperature(self, data):
     #     pass
