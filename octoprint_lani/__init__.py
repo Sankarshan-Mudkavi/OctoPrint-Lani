@@ -38,6 +38,7 @@ class PrinterCallback(octoprint.printer.PrinterCallback):
 
 
 class LaniPlugin(octoprint.plugin.StartupPlugin,
+                 octoprint.plugin.ShutdownPlugin,
                  octoprint.plugin.SettingsPlugin,
                  octoprint.plugin.TemplatePlugin,
                  octoprint.plugin.AssetPlugin,
@@ -141,12 +142,20 @@ class LaniPlugin(octoprint.plugin.StartupPlugin,
         }))
 
         self._logger.info('Starting Lani Listener.')
-        listener = LaniListener(
+        self.listener = LaniListener(
             self._logger,
             self._settings.get(['oskr_ws_url']),
             self.get_plugin_data_folder(),
         )
-        listener.start()
+        self.listener.start()
+
+    # ShutdownPlugin mixin
+
+    def on_shutdown(self):
+        self._logger.info('Cleaning up.')
+        if self.listener.is_alive():
+            self._logger.info('Terminating listener process.')
+            self.listener.terminate()
 
     # TemplatePlugin
 
