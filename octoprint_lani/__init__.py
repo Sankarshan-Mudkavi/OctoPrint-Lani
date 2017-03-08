@@ -158,7 +158,7 @@ class LaniPlugin(octoprint.plugin.StartupPlugin,
 
     def on_shutdown(self):
         self._logger.info('Cleaning up.')
-        if self.listener.is_alive():
+        if self.listener and self.listener.is_alive():
             self._logger.info('Terminating listener process.')
             self.listener.terminate()
 
