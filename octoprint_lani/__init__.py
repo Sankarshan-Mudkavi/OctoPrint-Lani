@@ -141,10 +141,8 @@ class LaniPlugin(octoprint.plugin.StartupPlugin,
             requests.post(self._settings.get(['oskr_update_url']), data=json.dumps({
                 self._settings.get(['id']): self._printer.get_current_data()
             }))
-        except requests.ConnectionError:
-            pass
         except:
-            self._logger.info('Ignoring request error.')
+            self._logger.info('Ignoring error.')
 
         self._logger.info('Starting Lani Listener.')
         self.listener = LaniListener(
