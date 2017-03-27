@@ -23,7 +23,7 @@ window.addEventListener('load', function() {
           laniLink.style.display = 'none';
 
           laniPrintCenterLink.textContent = data.printCenter.name;
-          laniPrintCenterLink.setAttribute('href', `https://lanilabs.com/${data.printCenter.subdomain}`)
+          laniPrintCenterLink.setAttribute('href', 'https://lanilabs.com/' + data.printCenter.subdomain);
           laniInfo.style.display = 'inline';
         },
         404: function() {
